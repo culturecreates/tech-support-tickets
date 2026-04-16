@@ -17,7 +17,7 @@ jobs:
           GH_TOKEN: ${{ secrets.ORG_PAT }}
           ORG: culturecreates
         run: |
-          echo "## 🔍 Suspended Scheduled Workflows Report" >> $GITHUB_STEP_SUMMARY
+          echo "## Suspended Scheduled Workflows Report" >> $GITHUB_STEP_SUMMARY
           echo "**Organisation:** \`$ORG\`" >> $GITHUB_STEP_SUMMARY
           echo "**Run date:** $(date -u '+%Y-%m-%d %H:%M UTC')" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -129,15 +129,20 @@ jobs:
           echo "|------|----------|--------|----------|" >> $GITHUB_STEP_SUMMARY
           printf "$rows" >> $GITHUB_STEP_SUMMARY
 
+          # Exit with failure if any suspended workflows are found
+          # This marks the workflow run as failed, making it visible in GitHub UI
+          # and enabling notifications to repo watchers
           if [ "$suspended_count" -gt 0 ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "> **$suspended_count suspended workflow(s) found.** Re-enable them via the Actions tab in each repo, or by pushing a commit to trigger activity." >> $GITHUB_STEP_SUMMARY
+            echo "> **$suspended_count suspended workflow(s) found.** Manual intervention required — re-enable them via the Actions tab in each repo." >> $GITHUB_STEP_SUMMARY
+            exit 1
           else
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "> All scheduled workflows are active." >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Upload JSON report
+        if: always() # Upload the artifact even when the step above exits with failure
         uses: actions/upload-artifact@v4
         with:
           name: suspended-workflows-report-${{ github.run_id }}
