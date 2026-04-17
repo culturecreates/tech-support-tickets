@@ -12,7 +12,7 @@ jobs:
       contents: read
 
     steps:
-      - name: Check suspended scheduled workflows across org
+      - name: Check and re-enable suspended scheduled workflows across org
         env:
           GH_TOKEN: ${{ secrets.ORG_PAT }}
           ORG: culturecreates
@@ -36,6 +36,8 @@ jobs:
           done
 
           suspended_count=0
+          reenabled_count=0
+          reenable_failed_count=0
           active_count=0
           total_cron_repos=0
           json_entries="[]"
@@ -78,15 +80,34 @@ jobs:
                 "https://api.github.com/repos/$ORG/$repo/actions/workflows/$wf_id/runs?per_page=1" \
                 | jq -r '.workflow_runs[0].created_at // "N/A"')
 
-              # Determine status
+              # Determine status and attempt re-enable if suspended
               if [ "$wf_state" = "disabled_inactivity" ]; then
                 suspended_count=$((suspended_count + 1))
-                status="SUSPENDED"
+
+                # Attempt to re-enable the workflow via GitHub API
+                http_status=$(curl -s -o /dev/null -w "%{http_code}" \
+                  -X PUT \
+                  -H "Authorization: Bearer $GH_TOKEN" \
+                  -H "Accept: application/vnd.github+json" \
+                  "https://api.github.com/repos/$ORG/$repo/actions/workflows/$wf_id/enable")
+
+                if [ "$http_status" = "204" ]; then
+                  reenabled_count=$((reenabled_count + 1))
+                  status="Re-enabled (was suspended)"
+                  reenable_status="re-enabled"
+                else
+                  reenable_failed_count=$((reenable_failed_count + 1))
+                  status="SUSPENDED (re-enable failed: HTTP $http_status)"
+                  reenable_status="re-enable_failed"
+                fi
+
               elif [ "$wf_state" = "active" ]; then
                 active_count=$((active_count + 1))
                 status="Active"
+                reenable_status="n/a"
               else
                 status="$wf_state"
+                reenable_status="n/a"
               fi
 
               rows+="| [$repo](https://github.com/$ORG/$repo) | $wf_name | $status | $last_run |\n"
@@ -98,9 +119,10 @@ jobs:
                 --arg id "$wf_id" \
                 --arg path "$wf_path" \
                 --arg state "$wf_state" \
+                --arg reenable_status "$reenable_status" \
                 --arg last_run "$last_run" \
                 --arg url "https://github.com/$ORG/$repo/actions/workflows/$(basename $wf_path)" \
-                '. += [{"repo": $repo, "workflow": $wf, "workflow_id": $id, "path": $path, "state": $state, "last_run": $last_run, "url": $url}]')
+                '. += [{"repo": $repo, "workflow": $wf, "workflow_id": $id, "path": $path, "state": $state, "reenable_status": $reenable_status, "last_run": $last_run, "url": $url}]')
 
             done <<< "$workflows"
 
@@ -121,7 +143,8 @@ jobs:
           echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| Repos with scheduled workflows | $total_cron_repos |" >> $GITHUB_STEP_SUMMARY
           echo "| Active | $active_count |" >> $GITHUB_STEP_SUMMARY
-          echo "| Suspended (auto-disabled by GitHub) | $suspended_count |" >> $GITHUB_STEP_SUMMARY
+          echo "| Suspended → Re-enabled this run | $reenabled_count |" >> $GITHUB_STEP_SUMMARY
+          echo "| Suspended → Re-enable failed | $reenable_failed_count |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           echo "### Workflow Details" >> $GITHUB_STEP_SUMMARY
@@ -129,12 +152,13 @@ jobs:
           echo "|------|----------|--------|----------|" >> $GITHUB_STEP_SUMMARY
           printf "$rows" >> $GITHUB_STEP_SUMMARY
 
-          # Exit with failure if any suspended workflows are found
-          # This marks the workflow run as failed, making it visible in GitHub UI
-          # and enabling notifications to repo watchers
+          # Exit with failure if any workflows were suspended (even if re-enabled).
+          # This marks the run red so GitHub sends an email notification to watchers.
+          # The email links back to this run where the summary and artifact show full details.
           if [ "$suspended_count" -gt 0 ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "> **$suspended_count suspended workflow(s) found.** Manual intervention required — re-enable them via the Actions tab in each repo." >> $GITHUB_STEP_SUMMARY
+            echo "> **$suspended_count suspended workflow(s) were found.** $reenabled_count were automatically re-enabled. $reenable_failed_count failed to re-enable." >> $GITHUB_STEP_SUMMARY
+            echo "> Review the workflow details table above and the JSON artifact for the full list." >> $GITHUB_STEP_SUMMARY
             exit 1
           else
             echo "" >> $GITHUB_STEP_SUMMARY
@@ -142,7 +166,7 @@ jobs:
           fi
 
       - name: Upload JSON report
-        if: always() # Upload the artifact even when the step above exits with failure
+        if: always() # Upload artifact even when the step above exits with failure
         uses: actions/upload-artifact@v4
         with:
           name: suspended-workflows-report-${{ github.run_id }}
