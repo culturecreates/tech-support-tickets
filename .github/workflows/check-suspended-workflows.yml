@@ -2,7 +2,7 @@ name: Check Suspended Scheduled Workflows
 
 on:
   schedule:
-    - cron: '0 9 * * 1' # Every Monday at 9:00 AM UTC
+    - cron: '0 9 * * 2' #  Runs at 09:00 UTC, only on Tuesday
   workflow_dispatch:
 
 jobs:
