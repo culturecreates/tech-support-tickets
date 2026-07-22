@@ -67,7 +67,7 @@ jobs:
               wf_content=$(curl -s \
                 -H "Authorization: Bearer $GH_TOKEN" \
                 -H "Accept: application/vnd.github.v3.raw" \
-                "https://api.github.com/repos/$ORG/$repo/contents/$wf_path")
+                "https://api.github.com/repos/$ORG/$repo/contents/$wf_path" || true)
 
               echo "$wf_content" | grep -qE '^\s*schedule:' || continue
 
@@ -77,7 +77,7 @@ jobs:
               last_run=$(curl -s \
                 -H "Authorization: Bearer $GH_TOKEN" \
                 -H "Accept: application/vnd.github+json" \
-                "https://api.github.com/repos/$ORG/$repo/actions/workflows/$wf_id/runs?per_page=1" \
+                "https://api.github.com/repos/$ORG/$repo/actions/workflows/$wf_id/runs?per_page=1" || true \
                 | jq -r '.workflow_runs[0].created_at // "N/A"')
 
               # Determine status and attempt re-enable if suspended
@@ -89,7 +89,7 @@ jobs:
                   -X PUT \
                   -H "Authorization: Bearer $GH_TOKEN" \
                   -H "Accept: application/vnd.github+json" \
-                  "https://api.github.com/repos/$ORG/$repo/actions/workflows/$wf_id/enable")
+                  "https://api.github.com/repos/$ORG/$repo/actions/workflows/$wf_id/enable" || true)
 
                 if [ "$http_status" = "204" ]; then
                   reenabled_count=$((reenabled_count + 1))
