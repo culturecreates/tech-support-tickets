@@ -35,22 +35,25 @@ jobs:
             ((page++))
           done
 
+          echo "::debug::Found ${#repos[@]} repos in org $ORG"
+
           suspended_count=0
           reenabled_count=0
           reenable_failed_count=0
           active_count=0
           total_cron_repos=0
+          skipped_count=0
           json_entries="[]"
           rows=""
 
           for repo in "${repos[@]}"; do
 
             # Get all workflows for this repo
-            workflows=$(curl -s \
+            workflows=$( (curl -s \
               -H "Authorization: Bearer $GH_TOKEN" \
               -H "Accept: application/vnd.github+json" \
               "https://api.github.com/repos/$ORG/$repo/actions/workflows?per_page=100" \
-              | jq -c '.workflows[]?' 2>/dev/null || true)
+              | jq -c '.workflows[]?' 2>/dev/null) || true )
             [ -z "$workflows" ] && continue
 
             has_cron_repo=false
@@ -63,6 +66,15 @@ jobs:
               wf_state=$(echo "$workflow_json" | jq -r '.state')
               wf_path=$(echo "$workflow_json" | jq -r '.path')
 
+              echo "::debug::repo=$repo wf_id=$wf_id wf_path=$wf_path wf_state=$wf_state"
+
+              # Guard: skip if path/id came back empty or null (prevents malformed-URL curl failures)
+              if [ -z "$wf_id" ] || [ "$wf_id" = "null" ] || [ -z "$wf_path" ] || [ "$wf_path" = "null" ]; then
+                echo "::warning::Skipping repo=$repo — invalid wf_id or wf_path (id='$wf_id' path='$wf_path')"
+                skipped_count=$((skipped_count + 1))
+                continue
+              fi
+
               # Fetch raw workflow file content and check for schedule trigger
               wf_content=$(curl -s \
                 -H "Authorization: Bearer $GH_TOKEN" \
@@ -74,11 +86,11 @@ jobs:
               has_cron_repo=true
 
               # Get the last run timestamp for this workflow
-              last_run=$(curl -s \
+              last_run=$( (curl -s \
                 -H "Authorization: Bearer $GH_TOKEN" \
                 -H "Accept: application/vnd.github+json" \
-                "https://api.github.com/repos/$ORG/$repo/actions/workflows/$wf_id/runs?per_page=1" || true \
-                | jq -r '.workflow_runs[0].created_at // "N/A"')
+                "https://api.github.com/repos/$ORG/$repo/actions/workflows/$wf_id/runs?per_page=1" \
+                | jq -r '.workflow_runs[0].created_at // "N/A"') || echo "N/A" )
 
               # Determine status and attempt re-enable if suspended
               if [ "$wf_state" = "disabled_inactivity" ]; then
@@ -89,7 +101,7 @@ jobs:
                   -X PUT \
                   -H "Authorization: Bearer $GH_TOKEN" \
                   -H "Accept: application/vnd.github+json" \
-                  "https://api.github.com/repos/$ORG/$repo/actions/workflows/$wf_id/enable" || true)
+                  "https://api.github.com/repos/$ORG/$repo/actions/workflows/$wf_id/enable" || echo "000")
 
                 if [ "$http_status" = "204" ]; then
                   reenabled_count=$((reenabled_count + 1))
@@ -110,7 +122,11 @@ jobs:
                 reenable_status="n/a"
               fi
 
-              rows+="| [$repo](https://github.com/$ORG/$repo) | $wf_name | $status | $last_run |\n"
+              # Only add non-active workflows to the step summary table to keep it under the 1MB limit.
+              # Full detail for every workflow (active or not) still goes into the JSON artifact below.
+              if [ "$wf_state" != "active" ]; then
+                rows+="| [$repo](https://github.com/$ORG/$repo) | $wf_name | $status | $last_run |\n"
+              fi
 
               # Append entry to JSON array
               json_entries=$(echo "$json_entries" | jq \
@@ -145,12 +161,17 @@ jobs:
           echo "| Active | $active_count |" >> $GITHUB_STEP_SUMMARY
           echo "| Suspended → Re-enabled this run | $reenabled_count |" >> $GITHUB_STEP_SUMMARY
           echo "| Suspended → Re-enable failed | $reenable_failed_count |" >> $GITHUB_STEP_SUMMARY
+          echo "| Skipped (invalid workflow entry) | $skipped_count |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          echo "### Workflow Details" >> $GITHUB_STEP_SUMMARY
-          echo "| Repo | Workflow | Status | Last Run |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|----------|--------|----------|" >> $GITHUB_STEP_SUMMARY
-          printf "$rows" >> $GITHUB_STEP_SUMMARY
+          if [ -n "$rows" ]; then
+            echo "### Non-Active Workflow Details" >> $GITHUB_STEP_SUMMARY
+            echo "_(Active workflows are omitted here to stay within the step summary size limit — see the JSON artifact for the full list.)_" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Repo | Workflow | Status | Last Run |" >> $GITHUB_STEP_SUMMARY
+            echo "|------|----------|--------|----------|" >> $GITHUB_STEP_SUMMARY
+            printf "$rows" >> $GITHUB_STEP_SUMMARY
+          fi
 
           # Exit with failure if any workflows were suspended (even if re-enabled).
           # This marks the run red so GitHub sends an email notification to watchers.
