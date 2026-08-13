@@ -19,10 +19,10 @@ jobs:
       - name: Collect this month's results from artifacts
         env:
           GH_TOKEN: ${{ secrets.WORKFLOW_HEALTH_TOKEN }}   # needs read access to both orgs' Actions data
-        run: ruby poller/collect_and_aggregate.rb
+        run: bundle exec ruby poller/collect_and_aggregate.rb
 
       - name: Build the report
-        run: ruby poller/build_report.rb
+        run: bundle exec ruby poller/build_report.rb
 
       - name: Commit updated data + report
         run: |
