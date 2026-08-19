@@ -9,6 +9,7 @@ require "time"
 ORGS = %w[culturecreates artsdata-stewards].freeze
 TOKEN = ENV.fetch("GH_TOKEN")
 DATA_FILE = "data/workflow_runs.jsonl"
+TOTALS_FILE = "data/run_totals.json" # denominator: total workflow runs per repo per month
 
 def gh_get(path)
   uri = URI("https://api.github.com#{path}")
@@ -47,6 +48,22 @@ def list_result_artifacts(owner, repo, since:)
     .select { |a| Time.parse(a["created_at"]) >= since }
 end
 
+# Total workflow runs per calendar month for a repo (the report's denominator).
+# Artifacts are uploaded on failure only, so this is the *only* source of the
+# success side of the ratio. Returns { "YYYY-MM" => count }.
+def run_totals_by_month(owner, repo, since:)
+  runs = gh_paginate(
+    "/repos/#{owner}/#{repo}/actions/runs?created=%3E#{since.strftime('%Y-%m-%d')}",
+    "workflow_runs"
+  )
+  runs.each_with_object(Hash.new(0)) do |run, acc|
+    stamp = run["run_started_at"] || run["created_at"]
+    next unless stamp
+
+    acc[stamp[0, 7]] += 1
+  end
+end
+
 def download_artifact_json(owner, repo, artifact)
   res = gh_get("/repos/#{owner}/#{repo}/actions/artifacts/#{artifact['id']}/zip")
   return nil unless res.is_a?(Net::HTTPRedirection) || res.is_a?(Net::HTTPSuccess)
@@ -63,44 +80,32 @@ rescue => e
   nil
 end
 
-# Cross-check: total run count per repo for the period, so runs whose
-# artifact upload itself failed don't just silently vanish from the count.
-def total_run_count(owner, repo, since:)
-  gh_paginate("/repos/#{owner}/#{repo}/actions/runs?created=%3E#{since.strftime('%Y-%m-%d')}", "workflow_runs").size
-end
-
 since = (Time.now.utc - 32 * 24 * 60 * 60) # last ~1 month, slight overlap is fine (dedup by run_id)
 rows = []
+totals = {} # "org/repo" => { "YYYY-MM" => total_runs }
 
 ORGS.each do |org|
   list_repos(org).each do |repo|
     owner = org
     name = repo["name"]
+    slug = "#{owner}/#{name}"
 
     artifacts = list_result_artifacts(owner, name, since: since)
-    found_run_ids = []
 
     artifacts.each do |artifact|
       data = download_artifact_json(owner, name, artifact)
       next unless data
 
-      found_run_ids << data["run_id"]
+      # Stamp authoritative org/repo so the report can break down per repo
+      # regardless of what the artifact's result.json happens to contain.
+      data["org"] = owner
+      data["repo"] = name
       rows << data
     end
 
-    next if artifacts.empty? # repo doesn't use the shared action - skip the extra API call
+    next if artifacts.empty? # repo doesn't use the shared action - skip the totals call
 
-    total_runs = total_run_count(owner, name, since: since)
-    missing = total_runs - found_run_ids.uniq.size
-    next unless missing.positive?
-
-    missing.times do
-      rows << {
-        "repo" => name, "workflow" => "unknown", "run_id" => nil,
-        "result" => "failure", "failure_category" => "artifact_missing",
-        "http_status" => nil, "started_at" => nil, "ended_at" => nil
-      }
-    end
+    totals[slug] = run_totals_by_month(owner, name, since: since)
   end
 end
 
@@ -115,4 +120,13 @@ File.open(DATA_FILE, "a") do |f|
   end
 end
 
-puts "Collected #{rows.size} rows this cycle."
+# Totals change over time, so merge the freshly computed months into the stored
+# snapshot (overwriting the months we just recounted) rather than appending.
+stored_totals = File.exist?(TOTALS_FILE) ? JSON.parse(File.read(TOTALS_FILE)) : {}
+totals.each do |slug, months|
+  stored_totals[slug] ||= {}
+  stored_totals[slug].merge!(months)
+end
+File.write(TOTALS_FILE, JSON.pretty_generate(stored_totals))
+
+puts "Collected #{rows.size} failure rows and totals for #{totals.size} repos this cycle."
