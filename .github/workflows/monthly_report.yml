@@ -1,0 +1,33 @@
+name: Workflow health report
+
+on:
+  schedule:
+    - cron: "0 6 1 * *"   # 06:00 UTC on the 1st of each month
+  workflow_dispatch: {}
+
+jobs:
+  build-report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.2"
+          bundler-cache: true
+
+      - name: Collect results from artifacts
+        env:
+          GH_TOKEN: ${{ secrets.WORKFLOW_HEALTH_TOKEN }}   # needs read access to both orgs' Actions data
+        run: bundle exec ruby workflow_health_report/collect_and_aggregate.rb
+
+      - name: Build the report
+        run: bundle exec ruby workflow_health_report/build_report.rb
+
+      - name: Commit updated data + report
+        run: |
+          git config user.name "workflow-health-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/workflow_runs.jsonl data/run_totals.json reports/
+          git commit -m "Workflow health report $(date -u +%Y-%m-%d)" || echo "nothing to commit"
+          git push
