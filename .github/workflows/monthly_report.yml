@@ -26,8 +26,8 @@ jobs:
 
       - name: Commit updated data + report
         run: |
-          git config user.name "workflow-health-bot"
-          git config user.email "actions@users.noreply.github.com"
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
           git add data/workflow_runs.jsonl data/run_totals.json reports/
           git commit -m "Workflow health report $(date -u +%Y-%m-%d)" || echo "nothing to commit"
           git push
