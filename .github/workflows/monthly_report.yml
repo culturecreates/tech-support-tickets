@@ -18,7 +18,7 @@ jobs:
 
       - name: Collect results from artifacts
         env:
-          GH_TOKEN: ${{ secrets.WORKFLOW_HEALTH_TOKEN }}   # needs read access to both orgs' Actions data
+          GH_TOKEN: ${{ secrets.ORG_PAT }}   # needs read access to both orgs' Actions data
         run: bundle exec ruby workflow_health_report/collect_and_aggregate.rb
 
       - name: Build the report
