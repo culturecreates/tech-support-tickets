@@ -29,5 +29,15 @@ jobs:
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add data/workflow_runs.jsonl data/run_totals.json reports/
-          git commit -m "Workflow health report $(date -u +%Y-%m-%d)" || echo "nothing to commit"
-          git push
+
+          if git diff --cached --quiet; then
+            echo "nothing to commit"
+            exit 0
+          fi
+
+          git commit -m "Workflow health report $(date -u +%Y-%m-%d)"
+
+          git fetch origin main
+          git rebase origin/main
+
+          git push origin HEAD:main
