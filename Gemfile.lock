@@ -1,12 +1,14 @@
 GEM
   remote: https://rubygems.org/
   specs:
+    minitest (5.27.0)
     rubyzip (3.4.1)
 
 PLATFORMS
   x86_64-linux-gnu
 
 DEPENDENCIES
+  minitest (~> 5.0)
   rubyzip
 
 RUBY VERSION
