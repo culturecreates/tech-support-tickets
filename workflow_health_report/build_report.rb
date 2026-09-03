@@ -17,15 +17,27 @@ def month_of(row)
   row["started_at"] ? row["started_at"][0, 7] : "unknown"
 end
 
+# Links straight to the failing job when we know which one (more precise
+# than the run-level link) - only known for failed_outside_pipeline_action
+# rows, where the collector looked it up via GitHub's jobs API.
 def run_url(row)
   return nil unless row["org"] && row["repo"] && row["run_id"]
 
-  "https://github.com/#{row['org']}/#{row['repo']}/actions/runs/#{row['run_id']}"
+  base = "https://github.com/#{row['org']}/#{row['repo']}/actions/runs/#{row['run_id']}"
+  row["job_id"] ? "#{base}/job/#{row['job_id']}" : base
 end
 
 def failure_label(row)
   suffix = row["http_status"] ? " (HTTP #{row['http_status']})" : ""
-  "`#{row['failure_category'] || 'unknown'}`#{suffix}"
+  label = "`#{row['failure_category'] || 'unknown'}`#{suffix}"
+
+  if row["failure_category"] == "failed_outside_pipeline_action" && row["job_name"]
+    detail = row["job_name"]
+    detail += " → #{row['step_name']}" if row["step_name"]
+    label += " (#{detail})"
+  end
+
+  label
 end
 
 # Total runs across all repos for a given month (used for the trend section).
@@ -37,10 +49,6 @@ end
 # --- Determine the reporting period ---
 # The job runs a couple of days into the new month, so "now" isn't the right
 # period to report on - use the most recent month that actually has data.
-# This is what "this period" means everywhere below: the most recently
-# completed month the collector has data for, not literally all history in
-# the file (which keeps growing since it's committed to git, independent of
-# how long the underlying GitHub artifacts themselves are retained).
 all_months = (failures.map { |r| month_of(r) } + total_runs_for_month.keys).reject { |m| m == "unknown" }
 current_period = all_months.max || Time.now.utc.strftime("%Y-%m")
 
@@ -112,7 +120,7 @@ else
 end
 lines << ""
 
-# --- 4. Trend across months - kept, but clearly labeled as trend, not "all time" ---
+# --- 4. Trend across months ---
 lines << "## Failure rate trend by month"
 lines << ""
 lines << "_History since this report started collecting - not a full lifetime record._"
