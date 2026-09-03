@@ -2,11 +2,125 @@
   "artsdata-stewards/artsdata-orion": {
     "2026-08": 88,
     "2026-07": 22,
-    "2026-09": 8
+    "2026-09": 19
   },
   "culturecreates/artsdata-orion": {
     "2026-08": 39,
     "2026-07": 8,
-    "2026-09": 6
+    "2026-09": 10
+  },
+  "culturecreates/artsdata-data-model": {
+    "2026-09": 6,
+    "2026-08": 90
+  },
+  "culturecreates/artsdata-api": {
+    "2026-08": 18
+  },
+  "culturecreates/graphdb-docker-compose": {
+    "2026-09": 5,
+    "2026-08": 29
+  },
+  "culturecreates/footlight-calendar-api": {
+    "2026-09": 6,
+    "2026-08": 49
+  },
+  "culturecreates/testbench": {
+    "2026-09": 10,
+    "2026-08": 28
+  },
+  "culturecreates/footlight-app": {
+    "2026-09": 31,
+    "2026-08": 58
+  },
+  "culturecreates/footlight-aggregator": {
+    "2026-09": 42,
+    "2026-08": 413
+  },
+  "culturecreates/tech-support-tickets": {
+    "2026-09": 4,
+    "2026-08": 11
+  },
+  "culturecreates/artsdata-planet-lavitrine": {
+    "2026-09": 3,
+    "2026-08": 32
+  },
+  "culturecreates/artsdata-planet-gtq": {
+    "2026-08": 4
+  },
+  "culturecreates/nebula": {
+    "2026-08": 26
+  },
+  "culturecreates/artsdata-planet-footlight": {
+    "2026-09": 21,
+    "2026-08": 203
+  },
+  "culturecreates/artsdata-planet-scenesfrancophones": {
+    "2026-08": 5
+  },
+  "culturecreates/artsdata-planet-nac": {
+    "2026-09": 1,
+    "2026-08": 8
+  },
+  "culturecreates/artsdata-planet-ipaa": {
+    "2026-09": 1
+  },
+  "culturecreates/artsdata-pipeline-action": {
+    "2026-09": 2,
+    "2026-08": 22
+  },
+  "culturecreates/artsdata-reconciliation": {
+    "2026-09": 3,
+    "2026-08": 52
+  },
+  "culturecreates/artsdata-planet-osac": {
+    "2026-09": 1,
+    "2026-08": 7
+  },
+  "culturecreates/artsdata-planet-spektrix": {
+    "2026-08": 5
+  },
+  "culturecreates/artsdata-planet-iwts": {
+    "2026-09": 4,
+    "2026-08": 4
+  },
+  "culturecreates/artsdata-planet-wikidata": {
+    "2026-09": 8,
+    "2026-08": 9
+  },
+  "culturecreates/artsdata-planet-atc": {
+    "2026-08": 6
+  },
+  "culturecreates/artsdata-planet-evenko": {
+    "2026-08": 4
+  },
+  "culturecreates/artsdata-planet-capacoa": {
+    "2026-09": 3,
+    "2026-08": 61
+  },
+  "culturecreates/artsdata-planet-pact-ca": {
+    "2026-09": 1,
+    "2026-08": 4
+  },
+  "culturecreates/footlight-condenser": {
+    "2026-09": 1,
+    "2026-08": 4
+  },
+  "culturecreates/artsdata-planet-rcr-survey": {
+    "2026-08": 2
+  },
+  "culturecreates/artsdata-mcp-server": {
+    "2026-09": 10,
+    "2026-08": 43
+  },
+  "culturecreates/open-reference": {
+    "2026-09": 5,
+    "2026-08": 17
+  },
+  "artsdata-stewards/support": {
+    "2026-08": 1
+  },
+  "artsdata-stewards/artsdata-planet-boost": {
+    "2026-09": 2,
+    "2026-08": 23
   }
 }
