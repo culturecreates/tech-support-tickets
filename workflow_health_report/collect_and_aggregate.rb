@@ -48,20 +48,11 @@ def list_result_artifacts(owner, repo, since:)
     .select { |a| Time.parse(a["created_at"]) >= since }
 end
 
-# Total workflow runs per calendar month for a repo (the report's denominator).
-# Artifacts are uploaded on failure only, so this is the *only* source of the
-# success side of the ratio. Returns { "YYYY-MM" => count }.
-def run_totals_by_month(owner, repo, since:)
-  runs = gh_paginate(
-    "/repos/#{owner}/#{repo}/actions/runs?created=%3E#{since.strftime('%Y-%m-%d')}",
-    "workflow_runs"
-  )
-  runs.each_with_object(Hash.new(0)) do |run, acc|
-    stamp = run["run_started_at"] || run["created_at"]
-    next unless stamp
-
-    acc[stamp[0, 7]] += 1
-  end
+# The action names its artifact "pipeline-result-<run_id>-<attempt>", so the
+# run_id it covers can be read straight from the name - no download needed
+# just to know WHICH runs already have a result.json.
+def run_id_from_artifact_name(name)
+  name[/pipeline-result-(\d+)/, 1]&.to_i
 end
 
 def download_artifact_json(owner, repo, artifact)
@@ -80,6 +71,37 @@ rescue => e
   nil
 end
 
+# All workflow runs for a repo in the period. Used for both the totals
+# denominator AND for finding failures that pipeline-action never got a
+# chance to see (upstream job failed, so its job/artifact step never ran).
+def list_runs(owner, repo, since:)
+  gh_paginate(
+    "/repos/#{owner}/#{repo}/actions/runs?created=%3E#{since.strftime('%Y-%m-%d')}",
+    "workflow_runs"
+  )
+end
+
+def run_totals_by_month(runs)
+  runs.each_with_object(Hash.new(0)) do |run, acc|
+    stamp = run["run_started_at"] || run["created_at"]
+    next unless stamp
+
+    acc[stamp[0, 7]] += 1
+  end
+end
+
+# For a failed run with no pipeline-action artifact: find which job and
+# step actually failed, straight from GitHub's own job listing - no log
+# scraping needed, GitHub already knows this.
+def failing_job_and_step(owner, repo, run_id)
+  jobs = gh_paginate("/repos/#{owner}/#{repo}/actions/runs/#{run_id}/jobs", "jobs")
+  failed_job = jobs.find { |j| j["conclusion"] == "failure" }
+  return [nil, nil, nil] unless failed_job
+
+  failed_step = (failed_job["steps"] || []).find { |s| s["conclusion"] == "failure" }
+  [failed_job["name"], failed_step&.dig("name"), failed_job["id"]]
+end
+
 since = (Time.now.utc - 32 * 24 * 60 * 60) # last ~1 month, slight overlap is fine (dedup by run_id)
 rows = []
 totals = {} # "org/repo" => { "YYYY-MM" => total_runs }
@@ -91,21 +113,46 @@ ORGS.each do |org|
     slug = "#{owner}/#{name}"
 
     artifacts = list_result_artifacts(owner, name, since: since)
+    covered_run_ids = artifacts.map { |a| run_id_from_artifact_name(a["name"]) }.compact
 
     artifacts.each do |artifact|
       data = download_artifact_json(owner, name, artifact)
       next unless data
 
-      # Stamp authoritative org/repo so the report can break down per repo
-      # regardless of what the artifact's result.json happens to contain.
       data["org"] = owner
       data["repo"] = name
       rows << data
     end
 
-    next if artifacts.empty? # repo doesn't use the shared action - skip the totals call
+    runs = list_runs(owner, name, since: since)
+    next if runs.empty?
 
-    totals[slug] = run_totals_by_month(owner, name, since: since)
+    totals[slug] = run_totals_by_month(runs)
+
+    # Failures pipeline-action never saw: the run failed, but no artifact
+    # exists for it because an earlier, unrelated job in the same workflow
+    # failed first (git push conflict, a crawl step, a SPARQL query, etc.)
+    # and the job that runs pipeline-action never started.
+    missed_failures = runs.select { |r| r["conclusion"] == "failure" && !covered_run_ids.include?(r["id"]) }
+    missed_failures.each do |run|
+      job_name, step_name, job_id = failing_job_and_step(owner, name, run["id"])
+
+      rows << {
+        "org" => owner,
+        "repo" => name,
+        "workflow" => run["name"],
+        "run_id" => run["id"],
+        "job_id" => job_id,
+        "job_name" => job_name,
+        "step_name" => step_name,
+        "result" => "failure",
+        "started_at" => run["run_started_at"] || run["created_at"],
+        "ended_at" => run["updated_at"],
+        "failure_category" => "failed_outside_pipeline_action",
+        "http_status" => nil,
+        "ruby_exception_class" => nil
+      }
+    end
   end
 end
 
