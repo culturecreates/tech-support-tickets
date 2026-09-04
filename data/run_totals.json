@@ -1,0 +1,57 @@
+{
+  "culturecreates/graphdb-docker-compose": {
+    "2026-09": 1
+  },
+  "culturecreates/artsdata-planet-gtq": {
+    "2026-09": 1,
+    "2026-08": 4
+  },
+  "culturecreates/artsdata-orion": {
+    "2026-09": 10,
+    "2026-08": 37
+  },
+  "culturecreates/artsdata-planet-scenesfrancophones": {
+    "2026-08": 4
+  },
+  "culturecreates/artsdata-planet-nac": {
+    "2026-08": 8,
+    "2026-09": 1
+  },
+  "culturecreates/artsdata-planet-ipaa": {
+    "2026-09": 1
+  },
+  "culturecreates/artsdata-planet-osac": {
+    "2026-09": 1,
+    "2026-08": 7
+  },
+  "culturecreates/artsdata-planet-iwts": {
+    "2026-09": 4,
+    "2026-08": 4
+  },
+  "culturecreates/artsdata-planet-wikidata": {
+    "2026-09": 8,
+    "2026-08": 5
+  },
+  "culturecreates/artsdata-planet-atc": {
+    "2026-08": 4
+  },
+  "culturecreates/artsdata-planet-evenko": {
+    "2026-09": 1,
+    "2026-08": 4
+  },
+  "culturecreates/artsdata-planet-capacoa": {
+    "2026-09": 6,
+    "2026-08": 59
+  },
+  "culturecreates/artsdata-planet-pact-ca": {
+    "2026-09": 1,
+    "2026-08": 4
+  },
+  "artsdata-stewards/artsdata-orion": {
+    "2026-09": 22,
+    "2026-08": 87
+  },
+  "artsdata-stewards/artsdata-planet-boost": {
+    "2026-08": 8
+  }
+}
