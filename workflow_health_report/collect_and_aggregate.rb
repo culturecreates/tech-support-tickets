@@ -5,6 +5,7 @@ require "json"
 require "zip"       # rubyzip gem, to unpack artifact downloads
 require "fileutils"
 require "time"
+require "yaml"
 
 ORGS = %w[culturecreates artsdata-stewards].freeze
 TOKEN = ENV.fetch("GH_TOKEN")
@@ -65,6 +66,54 @@ def uses_pipeline_action?(workflow_yaml_text)
   workflow_yaml_text.match?(/uses:\s*['"]?culturecreates\/artsdata-pipeline-action/)
 end
 
+# A run "failed to push" when the push job failed OR when a job the push
+# depends on (needs:) failed first, so the push never got to run. Both mean
+# the Artsdata graph didn't get its expected update. Parallel, unrelated jobs
+# (tests, notifications, deploys) do NOT block the push, so they're excluded.
+#
+# Returns the display names of the push job(s) plus every job they
+# transitively depend on - i.e. the exact set of jobs whose failure is a real
+# push failure. Names match what the runs/jobs API reports (job["name"] when
+# set, otherwise the job key).
+def push_blocking_job_names(workflow_yaml_text)
+  parsed = YAML.safe_load(workflow_yaml_text, aliases: true)
+  jobs = parsed.is_a?(Hash) ? parsed["jobs"] : nil
+  return [] unless jobs.is_a?(Hash)
+
+  graph = {}         # job_key => { name:, needs: [...] }
+  pipeline_keys = [] # job(s) that actually run artsdata-pipeline-action
+
+  jobs.each do |job_key, job|
+    next unless job.is_a?(Hash)
+
+    graph[job_key] = { name: job["name"] || job_key, needs: Array(job["needs"]) }
+
+    steps = job["steps"]
+    uses_here =
+      (steps.is_a?(Array) && steps.any? do |s|
+        s.is_a?(Hash) && s["uses"].to_s.include?("culturecreates/artsdata-pipeline-action")
+      end) || job["uses"].to_s.include?("culturecreates/artsdata-pipeline-action")
+
+    pipeline_keys << job_key if uses_here
+  end
+  return [] if pipeline_keys.empty?
+
+  # Walk the needs: graph upward from each push job to collect all ancestors.
+  relevant = []
+  queue = pipeline_keys.dup
+  until queue.empty?
+    key = queue.shift
+    next if relevant.include?(key)
+
+    relevant << key
+    queue.concat(Array(graph.dig(key, :needs)))
+  end
+
+  relevant.filter_map { |key| graph.dig(key, :name) }.uniq
+rescue Psych::Exception
+  []
+end
+
 # Maps a workflow file's path to its numeric workflow_id, which the runs API needs.
 def workflow_id_for_path(owner, repo, path)
   workflows = gh_paginate("/repos/#{owner}/#{repo}/actions/workflows", "workflows")
@@ -116,14 +165,18 @@ rescue => e
 end
 
 # Failures pipeline-action never saw: the run failed, but no artifact exists
-# because an earlier, unrelated job in the same workflow failed first (git
-# push conflict, a crawl step, a SPARQL query, etc.) and the job that runs
-# pipeline-action never started. GitHub's own jobs listing already knows
-# exactly which job/step failed - no log scraping needed.
-def failing_job_and_step(owner, repo, run_id)
+# because the push job (or a job it depends on) failed before result.json got
+# written. GitHub's own jobs listing already knows exactly which job/step
+# failed - no log scraping needed. When several jobs failed, prefer the one
+# that actually blocks the push so the report points at the relevant failure.
+def failing_job_and_step(owner, repo, run_id, relevant_names = nil)
   jobs = gh_paginate("/repos/#{owner}/#{repo}/actions/runs/#{run_id}/jobs", "jobs")
-  failed_job = jobs.find { |j| j["conclusion"] == "failure" }
-  return [nil, nil, nil] unless failed_job
+  failed_jobs = jobs.select { |j| j["conclusion"] == "failure" }
+  return [nil, nil, nil] if failed_jobs.empty?
+
+  failed_job =
+    (relevant_names && failed_jobs.find { |j| relevant_names.include?(j["name"]) }) ||
+    failed_jobs.first
 
   failed_step = (failed_job["steps"] || []).find { |s| s["conclusion"] == "failure" }
   [failed_job["name"], failed_step&.dig("name"), failed_job["id"]]
@@ -139,11 +192,13 @@ ORGS.each do |org|
     name = repo["name"]
     slug = "#{owner}/#{name}"
 
-    matched_paths = list_workflow_paths(owner, name).select do |path|
+    matched = list_workflow_paths(owner, name).filter_map do |path|
       content = fetch_raw_file(owner, name, path)
-      content && uses_pipeline_action?(content)
+      next unless content && uses_pipeline_action?(content)
+
+      { path: path, blocking_job_names: push_blocking_job_names(content) }
     end
-    next if matched_paths.empty? # this repo has nothing to do with pushing to Artsdata
+    next if matched.empty? # this repo has nothing to do with pushing to Artsdata
 
     artifacts = list_result_artifacts(owner, name, since: since)
     covered_run_ids = artifacts.map { |a| run_id_from_artifact_name(a["name"]) }.compact
@@ -157,9 +212,15 @@ ORGS.each do |org|
       rows << data
     end
 
-    repo_runs = matched_paths.flat_map do |path|
-      workflow_id = workflow_id_for_path(owner, name, path)
-      workflow_id ? list_workflow_runs(owner, name, workflow_id, since: since) : []
+    # workflow_id => job names whose failure means the push failed or was
+    # blocked upstream (the push job + everything it needs:).
+    blocking_by_workflow_id = {}
+    repo_runs = matched.flat_map do |m|
+      workflow_id = workflow_id_for_path(owner, name, m[:path])
+      next [] unless workflow_id
+
+      blocking_by_workflow_id[workflow_id] = m[:blocking_job_names]
+      list_workflow_runs(owner, name, workflow_id, since: since)
     end
     next if repo_runs.empty?
 
@@ -167,7 +228,13 @@ ORGS.each do |org|
 
     missed_failures = repo_runs.select { |r| r["conclusion"] == "failure" && !covered_run_ids.include?(r["id"]) }
     missed_failures.each do |run|
-      job_name, step_name, job_id = failing_job_and_step(owner, name, run["id"])
+      blocking = blocking_by_workflow_id[run["workflow_id"]]
+      job_name, step_name, job_id = failing_job_and_step(owner, name, run["id"], blocking)
+
+      # Keep only failures that actually block the Artsdata push: the push job
+      # itself or a job it depends on. Failures in unrelated parallel jobs
+      # (tests, notifications, deploys) don't stop the push - just noise.
+      next unless job_name && blocking&.include?(job_name)
 
       rows << {
         "org" => owner,
