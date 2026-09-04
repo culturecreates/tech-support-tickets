@@ -1,11 +1,11 @@
 {
   "artsdata-stewards/artsdata-orion": {
-    "2026-08": 88,
+    "2026-08": 87,
     "2026-07": 22,
-    "2026-09": 19
+    "2026-09": 22
   },
   "culturecreates/artsdata-orion": {
-    "2026-08": 39,
+    "2026-08": 37,
     "2026-07": 8,
     "2026-09": 10
   },
@@ -17,7 +17,7 @@
     "2026-08": 18
   },
   "culturecreates/graphdb-docker-compose": {
-    "2026-09": 5,
+    "2026-09": 1,
     "2026-08": 29
   },
   "culturecreates/footlight-calendar-api": {
@@ -45,7 +45,8 @@
     "2026-08": 32
   },
   "culturecreates/artsdata-planet-gtq": {
-    "2026-08": 4
+    "2026-08": 4,
+    "2026-09": 1
   },
   "culturecreates/nebula": {
     "2026-08": 26
@@ -55,7 +56,7 @@
     "2026-08": 203
   },
   "culturecreates/artsdata-planet-scenesfrancophones": {
-    "2026-08": 5
+    "2026-08": 4
   },
   "culturecreates/artsdata-planet-nac": {
     "2026-09": 1,
@@ -85,17 +86,18 @@
   },
   "culturecreates/artsdata-planet-wikidata": {
     "2026-09": 8,
-    "2026-08": 9
+    "2026-08": 5
   },
   "culturecreates/artsdata-planet-atc": {
-    "2026-08": 6
-  },
-  "culturecreates/artsdata-planet-evenko": {
     "2026-08": 4
   },
+  "culturecreates/artsdata-planet-evenko": {
+    "2026-08": 4,
+    "2026-09": 1
+  },
   "culturecreates/artsdata-planet-capacoa": {
-    "2026-09": 3,
-    "2026-08": 61
+    "2026-09": 5,
+    "2026-08": 59
   },
   "culturecreates/artsdata-planet-pact-ca": {
     "2026-09": 1,
@@ -121,6 +123,6 @@
   },
   "artsdata-stewards/artsdata-planet-boost": {
     "2026-09": 2,
-    "2026-08": 23
+    "2026-08": 8
   }
 }
