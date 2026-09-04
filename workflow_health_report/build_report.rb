@@ -55,7 +55,8 @@ current_period = all_months.max || Time.now.utc.strftime("%Y-%m")
 failures_this_period = failures.select { |r| month_of(r) == current_period }
 
 lines = ["# Workflow health report — #{current_period}", ""]
-lines << "Covers workflow runs from **#{current_period}**. Once a failure is fixed, it stops appearing here the following month — this report is not a lifetime failure log."
+lines << "Only covers workflows that push data to Artsdata via **artsdata-pipeline-action**."
+lines << "Covers **#{current_period}**. A fixed failure stops appearing here the following month — this is not a lifetime failure log."
 lines << ""
 
 # --- 1. Failed workflows this period: the actionable list ---
@@ -95,17 +96,16 @@ else
 end
 lines << ""
 
-# --- 3. Failure rate by repo, this period only ---
-lines << "## Failure rate by repo this period"
+# --- 3. Failure rate by repo, this period only - only repos that actually failed ---
+lines << "## Repos with failures this period"
 lines << ""
 failures_by_repo_this_period = failures_this_period.group_by { |r| "#{r['org']}/#{r['repo']}" }
-repo_slugs_this_period = (failures_by_repo_this_period.keys + totals.keys.select { |s| totals[s][current_period] }).uniq
 
-if repo_slugs_this_period.empty?
-  lines << "No data for this period."
+if failures_by_repo_this_period.empty?
+  lines << "No repo had a failure this period."
 else
-  repo_stats = repo_slugs_this_period.map do |slug|
-    failed = failures_by_repo_this_period.fetch(slug, []).size
+  repo_stats = failures_by_repo_this_period.map do |slug, group|
+    failed = group.size
     total = totals.dig(slug, current_period) || 0
     rate = total.zero? ? nil : (100.0 * failed / total).round(1)
     [slug, failed, total, rate]
